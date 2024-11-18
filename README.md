@@ -1,7 +1,7 @@
 
 ## Description
 
-Project that monitors and notifies when an available appointment is found at Maccabi Tivi Clinic. Work in progress (WIP).
+Project that monitors and notifies when an available appointment is found at Maccabi Tivi Clinic. Work in progress.
 
 ## Installation
 
