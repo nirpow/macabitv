@@ -9,6 +9,9 @@ export class MaccabiService {
   private client: ReturnType<typeof wrapper>;
   private cookieJar: CookieJar;
 
+  private authHeaders: string[] = [];
+  private actions: string[] = [];
+
   constructor() {
     this.cookieJar = new CookieJar(undefined, {
       allowSpecialUseDomain: true,
@@ -50,6 +53,75 @@ export class MaccabiService {
     }
   }
 
+  async setAuthHeaders() {
+    const mainFunctions = await this.client.post(
+      'https://tivi.maccabi4u.co.il/personal/,DanaInfo=.aoovyC57+choose',
+      {
+        maxRedirects: 0,
+      },
+    );
+
+    const $ = cheerio.load(mainFunctions.data);
+
+    let ajaxActions = '';
+
+    $('script').each((_, element) => {
+      const scriptContent = $(element).toString();
+      const regex = /\$\.(ajax)\(\{[\s\S]*?\}\);/g;
+      const matches = scriptContent.match(regex);
+      ajaxActions += matches;
+      // if (matches) ajaxActions.push(...matches);
+    });
+
+    const regexUrls = /url:\s*"\/umbracoadm\/surface\/WS\/([^"]+)"/g;
+    const matches = [...ajaxActions.matchAll(regexUrls)];
+    const urls = matches.map((match) => match[1]);
+
+    this.actions = urls;
+
+    const authRegex = /'Authorization':\s*'([^']+)'/g;
+    const authMatches = [...ajaxActions.matchAll(authRegex)];
+    const authHeaders = authMatches.map((match) => match[1]);
+    this.authHeaders = authHeaders;
+  }
+
+  // this function is actually returning object with available spots from "data" to the end of the month
+  async getTherapists(treatmentCode: number, clinicId: number, date: string) {
+    const therapists = await this.client.post(
+      `https://tivi.maccabi4u.co.il/umbracoadm/surface/WS/,DanaInfo=.aoovyC57,dom=1,CT=sxml+${this.actions[2]}`,
+      {
+        tipulId: treatmentCode,
+        compId: clinicId,
+        yomanId: '',
+        date: date,
+      },
+      {
+        headers: {
+          Authorization: this.authHeaders[2],
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+    return therapists.data;
+  }
+
+  async getClinicsByTreatment(treatmentId: number) {
+    const clinics = await this.client.post(
+      `https://tivi.maccabi4u.co.il/umbracoadm/surface/WS/,DanaInfo=.aoovyC57,dom=1,CT=sxml+${this.actions[1]}`,
+      { tipulId: treatmentId },
+      {
+        headers: {
+          Authorization: this.authHeaders[1],
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    return clinics.data;
+  }
+
   async getMyTreatmentsList() {
     try {
       const mainFunctions = await this.client.post(
@@ -81,64 +153,9 @@ export class MaccabiService {
           });
         }
       });
-      let ajaxActions = '';
-      $('script').each((_, element) => {
-        const scriptContent = $(element).toString();
-        const regex = /\$\.(ajax)\(\{[\s\S]*?\}\);/g;
-        const matches = scriptContent.match(regex);
-        ajaxActions += matches;
-        // if (matches) ajaxActions.push(...matches);
-      });
-
-      const regexUrls = /url:\s*"\/umbracoadm\/surface\/WS\/([^"]+)"/g;
-      const matches = [...ajaxActions.matchAll(regexUrls)];
-      const urls = matches.map((match) => match[1]);
-
-      console.log(urls);
-
-      const authRegex = /'Authorization':\s*'([^']+)'/g;
-      const authMatches = [...ajaxActions.matchAll(authRegex)];
-      const authHeaders = authMatches.map((match) => match[1]);
-
-      console.log(authHeaders);
-
-      const getClients = await this.client.post(
-        `https://tivi.maccabi4u.co.il/umbracoadm/surface/WS/,DanaInfo=.aoovyC57,dom=1,CT=sxml+${urls[1]}`,
-        { tipulId: 12 },
-        {
-          headers: {
-            Authorization: authHeaders[1],
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-      console.log(getClients);
 
       const dt = new Date().getTime();
       console.log(dt);
-
-      // const str = JSON.stringify({
-      //   tipulId: 12,
-      //   compId: 46,
-      //   yomanId: '0',
-      //   date: dt,
-      // });
-      // console.log(str);
-
-      const GetTherapists = await this.client.post(
-        `https://tivi.maccabi4u.co.il/umbracoadm/surface/WS/,DanaInfo=.aoovyC57,dom=1,CT=sxml+${urls[2]}`,
-        { tipulId: 172, compId: 46, yomanId: '', date: '19/11/2024' },
-        {
-          headers: {
-            Authorization: authHeaders[2],
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-
-      console.log(GetTherapists.data);
 
       return treatmentsList;
     } catch (error) {
@@ -193,7 +210,8 @@ export class MaccabiService {
       if (loginResponse.headers.location.includes('failed')) {
         throw new Error('Login failed');
       }
-
+      await this.setAuthHeaders();
+      console.log('Auth headers:', this.actions);
       return { success: true };
     } catch (error) {
       throw new HttpException(error.message, HttpStatus.UNAUTHORIZED);

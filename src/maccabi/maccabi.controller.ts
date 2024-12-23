@@ -18,4 +18,25 @@ export class MaccabiController {
   async getMyTreatments() {
     return await this.maccabiService.getMyTreatmentsList();
   }
+
+  @Get('clinics')
+  async getClinics(@Body() body: { treatmentId: number }) {
+    return await this.maccabiService.getClinicsByTreatment(body.treatmentId);
+  }
+
+  @Get('therapist')
+  async getTherapist(
+    @Body()
+    body: {
+      treatmentCode: number;
+      clinicId: number;
+      stringDate: string;
+    },
+  ) {
+    return await this.maccabiService.getTherapists(
+      body.treatmentCode,
+      body.clinicId,
+      body.stringDate,
+    );
+  }
 }
